@@ -1,0 +1,14 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+
+# Secrets and env files
+.env
+*.pem
+
+# Node / Python
+node_modules/
+__pycache__/
