@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CloudMart</title>
+  <script src="config.js"></script>
+</head>
+<body>
+  <h1>CloudMart Products</h1>
+  <form id="product-form">
+    <input id="product-name" placeholder="Name" required>
+    <input id="product-price" type="number" step="0.01" placeholder="Price" required>
+    <button type="submit">Add</button>
+  </form>
+  <ul id="product-list"></ul>
+
+  <script>
+    const api = (window.API_BASE || "") + "/api/products";
+
+    async function load() {
+      const list = document.getElementById("product-list");
+      list.textContent = "";
+      try {
+        const res = await fetch(api);
+        if (!res.ok) throw new Error(res.status);
+        for (const p of await res.json()) {
+          const li = document.createElement("li");
+          li.textContent = p.name + " - $" + p.price;
+          list.appendChild(li);
+        }
+      } catch (e) {
+        list.textContent = "Could not load products";
+      }
+    }
+
+    document.getElementById("product-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await fetch(api, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: document.getElementById("product-name").value,
+          price: parseFloat(document.getElementById("product-price").value),
+        }),
+      });
+      e.target.reset();
+      load();
+    });
+
+    load();
+  </script>
+</body>
+</html>

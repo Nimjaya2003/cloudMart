@@ -25,3 +25,7 @@ output "app_sg_id" {
 output "db_sg_id" {
   value = module.security_groups.db_sg_id
 }
+
+output "ecr_repository_urls" {
+  value = module.ecr.repository_urls
+}

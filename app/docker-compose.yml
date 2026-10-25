@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cloudmart
+      POSTGRES_USER: cloudmart
+      POSTGRES_PASSWORD: localdevpassword   # throwaway, local only
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudmart -d cloudmart"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DB_HOST: db
+      DB_NAME: cloudmart
+      DB_USER: cloudmart
+      DB_PASSWORD: localdevpassword
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./frontend/config.local.js:/usr/share/nginx/html/config.js:ro
+    depends_on:
+      - backend
+
+volumes:
+  dbdata:

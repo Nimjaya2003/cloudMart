@@ -14,3 +14,10 @@ module "security_groups" {
   name   = "cloudmart-dev"
   vpc_id = module.vpc.vpc_id # output of the VPC module feeds this one
 }
+
+module "ecr" {
+  source = "../../modules/ecr"
+
+  name         = "cloudmart"
+  repositories = ["frontend", "backend"]
+}
