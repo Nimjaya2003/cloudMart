@@ -29,3 +29,19 @@ output "db_sg_id" {
 output "ecr_repository_urls" {
   value = module.ecr.repository_urls
 }
+
+output "alb_dns_name" {
+  value = module.alb.alb_dns_name
+}
+
+output "db_address" {
+  value = module.rds.db_address
+}
+
+output "ecs_cluster_name" {
+  value = module.ecs.cluster_name
+}
+
+output "backend_service_name" {
+  value = module.ecs.backend_service_name
+}
