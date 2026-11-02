@@ -41,9 +41,6 @@ jobs:
   deploy:
     needs: test # only runs if the tests pass
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +54,6 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-skip-session-tagging: true
 
       - name: Log in to ECR
         id: ecr-login
