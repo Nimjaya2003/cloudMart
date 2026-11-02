@@ -45,3 +45,7 @@ output "ecs_cluster_name" {
 output "backend_service_name" {
   value = module.ecs.backend_service_name
 }
+
+output "github_actions_role_arn" {
+  value = module.github_oidc.role_arn
+}

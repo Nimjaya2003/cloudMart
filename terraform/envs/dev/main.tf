@@ -59,3 +59,10 @@ module "ecs" {
   # A target group must be attached to a listener before a service can use it
   depends_on = [module.alb]
 }
+
+module "github_oidc" {
+  source = "../../modules/github-oidc"
+
+  name        = "cloudmart-dev"
+  github_repo = "Nimjaya2003/cloudMart" # copy exactly from your GitHub repo URL
+}

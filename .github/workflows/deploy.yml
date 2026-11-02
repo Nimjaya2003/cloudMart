@@ -1,0 +1,92 @@
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: # also allows a manual "Run workflow" button
+
+permissions:
+  id-token: write # lets the job request the OIDC token
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false # queue deployments, never cancel one mid-flight
+
+env:
+  AWS_REGION: ap-south-1
+  ECS_CLUSTER: cloudmart-dev-cluster
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: app/backend
+        run: pip install -r requirements.txt pytest
+
+      - name: Run tests
+        working-directory: app/backend
+        run: pytest -q
+
+  deploy:
+    needs: test # only runs if the tests pass
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend] # one job per service, in parallel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to AWS (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image (tagged with the commit SHA)
+        id: build
+        env:
+          IMAGE: ${{ steps.ecr-login.outputs.registry }}/cloudmart/${{ matrix.service }}:${{ github.sha }}
+        run: |
+          docker build -t "$IMAGE" app/${{ matrix.service }}
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Download the current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition cloudmart-dev-${{ matrix.service }} \
+            --query taskDefinition > task-definition.json
+
+      - name: Put the new image into the task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ matrix.service }}
+          image: ${{ steps.build.outputs.image }}
+
+      - name: Deploy to ECS and wait until it is stable
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: cloudmart-dev-${{ matrix.service }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10
