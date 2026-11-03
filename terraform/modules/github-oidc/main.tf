@@ -2,8 +2,10 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
+  account_id       = data.aws_caller_identity.current.account_id
+  region           = data.aws_region.current.name
+  github_owner     = split("/", var.github_repo)[0]
+  github_repo_name = split("/", var.github_repo)[1]
 }
 
 # --- AWS learns to trust tokens issued by GitHub Actions ---
@@ -31,11 +33,26 @@ data "aws_iam_policy_document" "trust" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # The important line: only THIS repo, only THIS branch
     condition {
       test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:repository_owner_id"
+      values   = [var.github_owner_id]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:repository_id"
+      values   = [var.github_repo_id]
+    }
+
+    # Allow both mutable and immutable GitHub OIDC subject formats for this repo/branch.
+    condition {
+      test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/${var.branch}"]
+      values = [
+        "repo:${var.github_repo}:ref:refs/heads/${var.branch}",
+        "repo:${local.github_owner}@${var.github_owner_id}/${local.github_repo_name}@${var.github_repo_id}:ref:refs/heads/${var.branch}",
+      ]
     }
   }
 }

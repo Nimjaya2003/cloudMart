@@ -63,6 +63,8 @@ module "ecs" {
 module "github_oidc" {
   source = "../../modules/github-oidc"
 
-  name        = "cloudmart-dev"
-  github_repo = "Nimjaya2003/cloudMart" # copy exactly from your GitHub repo URL
+  name            = "cloudmart-dev"
+  github_repo     = "Nimjaya2003/cloudMart" # copy exactly from your GitHub repo URL
+  github_owner_id = "214961230"
+  github_repo_id  = "1427944852"
 }
