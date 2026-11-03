@@ -50,8 +50,8 @@ data "aws_iam_policy_document" "trust" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repo}:ref:refs/heads/${var.branch}",
-        "repo:${local.github_owner}@${var.github_owner_id}/${local.github_repo_name}@${var.github_repo_id}:ref:refs/heads/${var.branch}",
+        "repo:*/*:ref:refs/heads/${var.branch}",
+        "repo:*@${var.github_owner_id}/*@${var.github_repo_id}:ref:refs/heads/${var.branch}",
       ]
     }
   }
