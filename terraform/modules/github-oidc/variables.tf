@@ -8,6 +8,16 @@ variable "github_repo" {
   description = "GitHub repository as OWNER/REPO, exactly as in the URL (case-sensitive)"
 }
 
+variable "github_owner_id" {
+  type        = string
+  description = "GitHub repository owner numeric ID from the GitHub API"
+}
+
+variable "github_repo_id" {
+  type        = string
+  description = "GitHub repository numeric ID from the GitHub API"
+}
+
 variable "branch" {
   type        = string
   default     = "main"
