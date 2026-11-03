@@ -49,10 +49,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Normalize AWS role ARN
+        id: aws-role
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: |
+          role_arn="$(echo "$AWS_ROLE_ARN" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+          echo "role_arn=$role_arn" >> "$GITHUB_OUTPUT"
+
       - name: Authenticate to AWS (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ steps.aws-role.outputs.role_arn }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to ECR
