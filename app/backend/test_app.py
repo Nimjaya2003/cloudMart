@@ -12,3 +12,9 @@ def test_add_product_requires_fields():
     client = app.test_client()
     resp = client.post("/api/products", json={"name": ""})
     assert resp.status_code == 400
+
+def test_version():
+    client = app.test_client()
+    resp = client.get("/api/version")
+    assert resp.status_code == 200
+    assert "version" in resp.get_json()

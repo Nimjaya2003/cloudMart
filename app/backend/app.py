@@ -59,6 +59,10 @@ def health():
     # Deliberately does NOT touch the database (see notes below).
     return jsonify(status="ok"), 200
 
+@app.get("/api/version")
+def version():
+    return jsonify(version=os.environ.get("APP_VERSION", "dev"))
+
 
 @app.get("/api/products")
 def list_products():

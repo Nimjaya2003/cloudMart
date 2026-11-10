@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>CloudMart</title>
   <script src="config.js"></script>
+  <script src="version.js"></script>
 </head>
 <body>
   <h1>CloudMart Products</h1>
@@ -13,9 +14,11 @@
     <button type="submit">Add</button>
   </form>
   <ul id="product-list"></ul>
+  <p id="version-info"></p>
 
   <script>
-    const api = (window.API_BASE || "") + "/api/products";
+    const base = window.API_BASE || "";
+    const api = base + "/api/products";
 
     async function load() {
       const list = document.getElementById("product-list");
@@ -33,6 +36,16 @@
       }
     }
 
+    async function showVersions() {
+      let backend = "unknown";
+      try {
+        const res = await fetch(base + "/api/version");
+        if (res.ok) backend = (await res.json()).version;
+      } catch (e) {}
+      document.getElementById("version-info").textContent =
+        "frontend: " + (window.APP_VERSION || "dev") + " | backend: " + backend;
+    }
+
     document.getElementById("product-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       await fetch(api, {
@@ -48,6 +61,7 @@
     });
 
     load();
+    showVersions();
   </script>
 </body>
 </html>
