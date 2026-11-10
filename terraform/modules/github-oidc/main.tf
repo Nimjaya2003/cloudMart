@@ -4,6 +4,12 @@ data "aws_region" "current" {}
 locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.name
+
+  repo_owner = split("/", var.github_repo)[0]
+  repo_name  = split("/", var.github_repo)[1]
+
+  # GitHub's immutable subject format: names plus permanent numeric IDs
+  github_sub = "repo:${local.repo_owner}@${var.github_owner_id}/${local.repo_name}@${var.github_repo_id}:ref:refs/heads/${var.branch}"
 }
 
 # --- AWS learns to trust tokens issued by GitHub Actions ---
@@ -31,11 +37,11 @@ data "aws_iam_policy_document" "trust" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # The important line: only THIS repo, only THIS branch
+    # Only THIS repo (pinned by permanent IDs), only THIS branch
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/${var.branch}"]
+      values   = [local.github_sub]
     }
   }
 }
