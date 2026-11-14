@@ -90,13 +90,18 @@ data "aws_iam_policy_document" "deploy" {
     actions = ["iam:PassRole"]
     resources = [
       "arn:aws:iam::${local.account_id}:role/${var.name}-ecs-execution-role",
-      "arn:aws:iam::${local.account_id}:role/${var.name}-ecs-task-role",
+      "arn:aws:iam::${local.account_id}:role/${var.name}-*-task-role",
     ]
     condition {
       test     = "StringEquals"
       variable = "iam:PassedToService"
       values   = ["ecs-tasks.amazonaws.com"]
     }
+  }
+  statement {
+    sid       = "ReadLoadBalancerAddress"
+    actions   = ["elasticloadbalancing:DescribeLoadBalancers"]
+    resources = ["*"] # describe actions cannot be limited to one resource
   }
 }
 

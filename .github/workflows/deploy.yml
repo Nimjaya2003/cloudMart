@@ -6,10 +6,10 @@ on:
     paths:
       - "app/**"
       - ".github/workflows/deploy.yml"
-  workflow_dispatch: # also allows a manual "Run workflow" button
+  workflow_dispatch: # manual "Run workflow" button: deploys every service
 
 permissions:
-  id-token: write # lets the job request the OIDC token
+  id-token: write # lets jobs request the OIDC token
   contents: read
 
 concurrency:
@@ -21,8 +21,13 @@ env:
   ECS_CLUSTER: cloudmart-dev-cluster
 
 jobs:
+  # ---------- 1. Test every Python service on its own ----------
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [catalog, cart, orders]
     steps:
       - uses: actions/checkout@v4
 
@@ -31,20 +36,67 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        working-directory: app/backend
+        working-directory: app/${{ matrix.service }}
         run: pip install -r requirements.txt pytest
 
       - name: Run tests
-        working-directory: app/backend
+        working-directory: app/${{ matrix.service }}
         run: pytest -q
 
+  # ---------- 2. Work out which services need deploying ----------
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history, so we can compare with the previous commit
+
+      - name: Detect changed services
+        id: detect
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          ALL=(frontend catalog cart orders)
+          services=()
+
+          # Manual runs, brand-new branches or an unreadable history: deploy everything
+          if [ "$EVENT" = "workflow_dispatch" ] \
+             || [ -z "$BEFORE" ] \
+             || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA" 2>/dev/null); then
+            services=("${ALL[@]}")
+          # A change to this workflow itself: redeploy everything
+          elif grep -qxF ".github/workflows/deploy.yml" <<< "$changed"; then
+            services=("${ALL[@]}")
+          else
+            for svc in "${ALL[@]}"; do
+              if grep -q "^app/${svc}/" <<< "$changed"; then
+                services+=("$svc")
+              fi
+            done
+          fi
+
+          if [ "${#services[@]}" -eq 0 ]; then
+            json='[]'
+          else
+            json=$(printf '%s\n' "${services[@]}" | jq -R . | jq -sc .)
+          fi
+
+          echo "Services to deploy: $json"
+          echo "services=$json" >> "$GITHUB_OUTPUT"
+
+  # ---------- 3. Build, push and deploy each changed service ----------
   deploy:
-    needs: test # only runs if the tests pass
+    needs: [test, changes]
+    if: needs.changes.outputs.services != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [backend, frontend] # one job per service, in parallel
+        service: ${{ fromJson(needs.changes.outputs.services) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -90,3 +142,26 @@ jobs:
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
           wait-for-minutes: 10
+
+      - name: Smoke test the live service
+        run: |
+          ALB=$(aws elbv2 describe-load-balancers --names cloudmart-dev-alb \
+                  --query 'LoadBalancers[0].DNSName' --output text)
+          EXPECTED="${GITHUB_SHA::7}"
+          if [ "${{ matrix.service }}" = "frontend" ]; then
+            URL="http://$ALB/version.js"
+          else
+            URL="http://$ALB/api/${{ matrix.service }}/version"
+          fi
+          body=""
+          for i in $(seq 1 10); do
+            body=$(curl -s --max-time 5 "$URL" || true)
+            if grep -q "$EXPECTED" <<< "$body"; then
+              echo "OK: $URL reports version $EXPECTED"
+              exit 0
+            fi
+            echo "Attempt $i: not serving $EXPECTED yet"
+            sleep 6
+          done
+          echo "FAILED: $URL did not report $EXPECTED (last response: $body)"
+          exit 1

@@ -1,22 +1,13 @@
-locals {
-  scalable_services = {
-    frontend = aws_ecs_service.frontend.name
-    backend  = aws_ecs_service.backend.name
-  }
-}
-
-# Register each service as something that can scale between min and max tasks
 resource "aws_appautoscaling_target" "this" {
-  for_each = local.scalable_services
+  for_each = var.services
 
   service_namespace  = "ecs"
   scalable_dimension = "ecs:service:DesiredCount"
-  resource_id        = "service/${aws_ecs_cluster.this.name}/${each.value}"
-  min_capacity       = var.min_capacity
-  max_capacity       = var.max_capacity
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.this[each.key].name}"
+  min_capacity       = each.value.min_capacity
+  max_capacity       = each.value.max_capacity
 }
 
-# Target tracking: keep average CPU near the target, like a thermostat
 resource "aws_appautoscaling_policy" "cpu" {
   for_each = aws_appautoscaling_target.this
 
@@ -28,8 +19,8 @@ resource "aws_appautoscaling_policy" "cpu" {
 
   target_tracking_scaling_policy_configuration {
     target_value       = var.cpu_target
-    scale_out_cooldown = 60  # add tasks quickly
-    scale_in_cooldown  = 120 # remove tasks cautiously
+    scale_out_cooldown = 60
+    scale_in_cooldown  = 120
 
     predefined_metric_specification {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"

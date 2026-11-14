@@ -13,27 +13,62 @@ services:
       timeout: 3s
       retries: 10
 
-  backend:
-    build: ./backend
+  dynamodb:
+    image: amazon/dynamodb-local:latest   # a local stand-in for DynamoDB
+
+  catalog:
+    build: ./catalog
     environment:
       DB_HOST: db
       DB_NAME: cloudmart
       DB_USER: cloudmart
       DB_PASSWORD: localdevpassword
-    ports:
-      - "8080:8080"
     depends_on:
       db:
         condition: service_healthy
 
+  cart:
+    build: ./cart
+    environment:
+      AWS_REGION: ap-south-1
+      AWS_ACCESS_KEY_ID: local          # DynamoDB Local accepts any value
+      AWS_SECRET_ACCESS_KEY: local
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      CART_TABLE: cloudmart-local-carts
+    depends_on:
+      - dynamodb
+
+  orders:
+    build: ./orders
+    environment:
+      DB_HOST: db
+      DB_NAME: cloudmart
+      DB_USER: cloudmart
+      DB_PASSWORD: localdevpassword
+      CATALOG_URL: http://catalog:8080
+      CART_URL: http://cart:8080
+    depends_on:
+      db:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+      cart:
+        condition: service_started
+
   frontend:
     build: ./frontend
+
+  gateway:
+    image: nginx:1.27-alpine
     ports:
-      - "3000:8080"
+      - "8000:80"
     volumes:
-      - ./frontend/config.local.js:/usr/share/nginx/html/config.js:ro
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - backend
+      - frontend
+      - catalog
+      - cart
+      - orders
 
 volumes:
   dbdata:
