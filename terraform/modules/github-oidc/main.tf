@@ -98,6 +98,11 @@ data "aws_iam_policy_document" "deploy" {
       values   = ["ecs-tasks.amazonaws.com"]
     }
   }
+  statement {
+    sid       = "ReadLoadBalancerAddress"
+    actions   = ["elasticloadbalancing:DescribeLoadBalancers"]
+    resources = ["*"] # describe actions cannot be limited to one resource
+  }
 }
 
 resource "aws_iam_role_policy" "deploy" {
