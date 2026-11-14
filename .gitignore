@@ -12,3 +12,6 @@ crash.log
 # Node / Python
 node_modules/
 __pycache__/
+
+*.zip
+event.json
