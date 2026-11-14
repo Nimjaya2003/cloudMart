@@ -94,6 +94,20 @@ data "aws_iam_policy_document" "cart_task" {
     resources = [module.dynamodb.table_arn]
   }
 }
+module "order_events" {
+  source = "../../modules/order-events"
+
+  name               = "cloudmart-dev"
+  notification_email = var.notification_email
+}
+
+# The orders service may publish to ONE topic and do nothing else in AWS
+data "aws_iam_policy_document" "orders_task" {
+  statement {
+    actions   = ["sns:Publish"]
+    resources = [module.order_events.topic_arn]
+  }
+}
 
 module "ecs" {
   source = "../../modules/ecs"
@@ -132,15 +146,18 @@ module "ecs" {
       image            = "${module.ecr.repository_urls["orders"]}:${local.image_tag}"
       target_group_arn = module.alb.target_group_arns["orders"]
       environment = merge(local.db_env, {
-        CATALOG_URL = "http://catalog.cloudmart.local:8080"
-        CART_URL    = "http://cart.cloudmart.local:8080"
+        CATALOG_URL            = "http://catalog.cloudmart.local:8080"
+        CART_URL               = "http://cart.cloudmart.local:8080"
+        AWS_REGION             = "ap-south-1"
+        ORDER_EVENTS_TOPIC_ARN = module.order_events.topic_arn
       })
       secrets = local.db_secrets
     }
   }
 
   task_policies = {
-    cart = data.aws_iam_policy_document.cart_task.json
+    cart   = data.aws_iam_policy_document.cart_task.json
+    orders = data.aws_iam_policy_document.orders_task.json
   }
 
   # Target groups must be attached to the listener before services can use them

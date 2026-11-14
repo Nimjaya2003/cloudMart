@@ -53,3 +53,19 @@ output "ecs_service_names" {
 output "github_actions_role_arn" {
   value = module.github_oidc.role_arn
 }
+
+output "order_events_topic_arn" {
+  value = module.order_events.topic_arn
+}
+
+output "notifications_queue_url" {
+  value = module.order_events.queue_url
+}
+
+output "notifications_dlq_url" {
+  value = module.order_events.dlq_url
+}
+
+output "notifier_function_name" {
+  value = module.order_events.function_name
+}

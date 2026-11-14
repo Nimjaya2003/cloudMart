@@ -1,19 +1,28 @@
+import json
 import os
 import re
+import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
+import boto3
 import psycopg2
 import requests
+from botocore.exceptions import BotoCoreError, ClientError
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 _tables_ready = False
 SCHEMA_LOCK_ID = 727002
 
-# In AWS these names are resolved by ECS Service Connect (Part B); locally by Docker Compose
+# In AWS these names are resolved by Cloud Map DNS; locally by Docker Compose
 CATALOG_URL = os.environ.get("CATALOG_URL", "http://catalog:8080")
 CART_URL = os.environ.get("CART_URL", "http://cart:8080")
 CART_ID_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+
+# Where to announce orders. Unset on a laptop, so local runs simply skip the announcement.
+TOPIC_ARN = os.environ.get("ORDER_EVENTS_TOPIC_ARN")
+_sns = None
 
 
 class UpstreamError(Exception):
@@ -74,6 +83,30 @@ def call(method, url, service):
     if not resp.ok:
         raise UpstreamError(service, resp.status_code)
     return resp
+
+
+def publish_order_placed(order_id, cart_id, total, items):
+    """Announce a saved order. A failure here is logged, never returned: the order already exists."""
+    global _sns
+    if not TOPIC_ARN:
+        app.logger.info("ORDER_EVENTS_TOPIC_ARN not set, skipping event for order %s", order_id)
+        return
+    event = {
+        "event_type": "OrderPlaced",
+        "event_id": str(uuid.uuid4()),  # unique ID, so consumers can detect duplicates
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "order": {"id": order_id, "cart_id": cart_id, "total": total, "items": items},
+    }
+    try:
+        if _sns is None:
+            _sns = boto3.client("sns", region_name=os.environ.get("AWS_REGION", "ap-south-1"))
+        _sns.publish(
+            TopicArn=TOPIC_ARN,
+            Message=json.dumps(event),
+            MessageAttributes={"event_type": {"DataType": "String", "StringValue": "OrderPlaced"}},
+        )
+    except (BotoCoreError, ClientError):
+        app.logger.exception("could not publish OrderPlaced for order %s", order_id)
 
 
 @app.errorhandler(UpstreamError)
@@ -139,16 +172,20 @@ def place_order():
     finally:
         conn.close()
 
-    # 4. Empty the cart (best effort; Phase 6 replaces this with an event)
+    items = [
+        {"product_id": pid, "name": name, "unit_price": float(price), "qty": qty}
+        for pid, name, price, qty in lines
+    ]
+
+    # 4. Empty the cart (best effort)
     try:
         requests.delete(f"{CART_URL}/api/cart/{cart_id}", timeout=3)
     except requests.RequestException:
         app.logger.warning("could not clear cart %s", cart_id)
 
-    items = [
-        {"product_id": pid, "name": name, "unit_price": float(price), "qty": qty}
-        for pid, name, price, qty in lines
-    ]
+    # 5. Announce the order to everyone who cares (email today, anything else tomorrow)
+    publish_order_placed(order_id, cart_id, float(total), items)
+
     return jsonify(id=order_id, status="PLACED", total=float(total), items=items), 201
 
 
