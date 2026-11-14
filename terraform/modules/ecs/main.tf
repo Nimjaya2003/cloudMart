@@ -4,26 +4,50 @@ resource "aws_ecs_cluster" "this" {
   name = "${var.name}-cluster"
 }
 
-# ---------- Log groups (container stdout/stderr land here) ----------
-resource "aws_cloudwatch_log_group" "frontend" {
-  name              = "/ecs/${var.name}/frontend"
+# ---------- Service discovery: private DNS like catalog.cloudmart.local ----------
+resource "aws_service_discovery_private_dns_namespace" "this" {
+  name = var.namespace_name
+  vpc  = var.vpc_id
+}
+
+resource "aws_service_discovery_service" "this" {
+  for_each = { for k, v in var.services : k => v if v.discovery }
+
+  name = each.key
+
+  dns_config {
+    namespace_id   = aws_service_discovery_private_dns_namespace.this.id
+    routing_policy = "MULTIVALUE"
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
+# ---------- One log group, task definition and service per entry ----------
+resource "aws_cloudwatch_log_group" "this" {
+  for_each = var.services
+
+  name              = "/ecs/${var.name}/${each.key}"
   retention_in_days = var.log_retention_days
 }
 
-resource "aws_cloudwatch_log_group" "backend" {
-  name              = "/ecs/${var.name}/backend"
-  retention_in_days = var.log_retention_days
-}
+resource "aws_ecs_task_definition" "this" {
+  for_each = var.services
 
-# ======================== BACKEND ========================
-resource "aws_ecs_task_definition" "backend" {
-  family                   = "${var.name}-backend"
+  family                   = "${var.name}-${each.key}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = var.cpu
-  memory                   = var.memory
+  cpu                      = each.value.cpu
+  memory                   = each.value.memory
   execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
+  task_role_arn            = aws_iam_role.task[each.key].arn
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -31,8 +55,8 @@ resource "aws_ecs_task_definition" "backend" {
   }
 
   container_definitions = jsonencode([{
-    name      = "backend"
-    image     = var.backend_image
+    name      = each.key
+    image     = each.value.image
     essential = true
 
     portMappings = [{
@@ -40,39 +64,30 @@ resource "aws_ecs_task_definition" "backend" {
       protocol      = "tcp"
     }]
 
-    # Plain, non-sensitive settings
-    environment = [
-      { name = "DB_HOST", value = var.db_address },
-      { name = "DB_PORT", value = tostring(var.db_port) },
-      { name = "DB_NAME", value = var.db_name },
-    ]
-
-    # Sensitive values: ECS fetches these from Secrets Manager at start-up.
-    # The "...:username::" suffix selects one key from the secret's JSON.
-    secrets = [
-      { name = "DB_USER", valueFrom = "${var.db_secret_arn}:username::" },
-      { name = "DB_PASSWORD", valueFrom = "${var.db_secret_arn}:password::" },
-    ]
+    environment = [for k, v in each.value.environment : { name = k, value = v }]
+    secrets     = [for k, v in each.value.secrets : { name = k, valueFrom = v }]
 
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.backend.name
+        "awslogs-group"         = aws_cloudwatch_log_group.this[each.key].name
         "awslogs-region"        = data.aws_region.current.name
-        "awslogs-stream-prefix" = "backend"
+        "awslogs-stream-prefix" = each.key
       }
     }
   }])
 }
 
-resource "aws_ecs_service" "backend" {
-  name            = "${var.name}-backend"
+resource "aws_ecs_service" "this" {
+  for_each = var.services
+
+  name            = "${var.name}-${each.key}"
   cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.backend.arn
-  desired_count   = var.desired_count
+  task_definition = aws_ecs_task_definition.this[each.key].arn
+  desired_count   = each.value.desired_count
   launch_type     = "FARGATE"
 
-  health_check_grace_period_seconds = 60 # don't judge a task unhealthy while it's still starting
+  health_check_grace_period_seconds = 60
 
   network_configuration {
     subnets          = var.private_subnet_ids
@@ -81,78 +96,17 @@ resource "aws_ecs_service" "backend" {
   }
 
   load_balancer {
-    target_group_arn = var.backend_tg_arn
-    container_name   = "backend"
+    target_group_arn = each.value.target_group_arn
+    container_name   = each.key
     container_port   = var.app_port
   }
 
-  # If a new deployment keeps failing, stop it and roll back automatically
-  deployment_circuit_breaker {
-    enable   = true
-    rollback = true
-  }
-
-  lifecycle {
-    # Auto scaling owns the task count, and CI/CD (next phase) will own the image version
-    ignore_changes = [desired_count, task_definition]
-  }
-}
-
-# ======================== FRONTEND ========================
-resource "aws_ecs_task_definition" "frontend" {
-  family                   = "${var.name}-frontend"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = var.cpu
-  memory                   = var.memory
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
-
-  runtime_platform {
-    operating_system_family = "LINUX"
-    cpu_architecture        = "X86_64"
-  }
-
-  container_definitions = jsonencode([{
-    name      = "frontend"
-    image     = var.frontend_image
-    essential = true
-
-    portMappings = [{
-      containerPort = var.app_port
-      protocol      = "tcp"
-    }]
-
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.frontend.name
-        "awslogs-region"        = data.aws_region.current.name
-        "awslogs-stream-prefix" = "frontend"
-      }
+  # Only services with discovery = true get a DNS name
+  dynamic "service_registries" {
+    for_each = each.value.discovery ? [1] : []
+    content {
+      registry_arn = aws_service_discovery_service.this[each.key].arn
     }
-  }])
-}
-
-resource "aws_ecs_service" "frontend" {
-  name            = "${var.name}-frontend"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.frontend.arn
-  desired_count   = var.desired_count
-  launch_type     = "FARGATE"
-
-  health_check_grace_period_seconds = 30
-
-  network_configuration {
-    subnets          = var.private_subnet_ids
-    security_groups  = [var.app_sg_id]
-    assign_public_ip = false
-  }
-
-  load_balancer {
-    target_group_arn = var.frontend_tg_arn
-    container_name   = "frontend"
-    container_port   = var.app_port
   }
 
   deployment_circuit_breaker {
@@ -161,6 +115,7 @@ resource "aws_ecs_service" "frontend" {
   }
 
   lifecycle {
+    # Auto scaling owns the task count and the CI/CD pipeline owns the image version
     ignore_changes = [desired_count, task_definition]
   }
 }

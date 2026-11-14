@@ -1,4 +1,3 @@
-# Both roles are assumed by the ECS service, so they share one trust policy
 data "aws_iam_policy_document" "ecs_tasks_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -9,19 +8,17 @@ data "aws_iam_policy_document" "ecs_tasks_assume" {
   }
 }
 
-# ---------- Execution role: used by ECS itself to START the task ----------
+# ---------- Execution role (shared): used by ECS to START tasks ----------
 resource "aws_iam_role" "execution" {
   name               = "${var.name}-ecs-execution-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
 }
 
-# AWS-managed policy: pull from ECR + write to CloudWatch Logs
 resource "aws_iam_role_policy_attachment" "execution_managed" {
   role       = aws_iam_role.execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Custom policy: read ONLY the DB secret, nothing else in Secrets Manager
 data "aws_iam_policy_document" "read_db_secret" {
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
@@ -35,9 +32,19 @@ resource "aws_iam_role_policy" "execution_secret" {
   policy = data.aws_iam_policy_document.read_db_secret.json
 }
 
-# ---------- Task role: used by YOUR CODE inside the container ----------
-# Intentionally has no permissions yet: the app only talks to Postgres, not to AWS APIs.
+# ---------- Task role (one per service): used by the app code itself ----------
 resource "aws_iam_role" "task" {
-  name               = "${var.name}-ecs-task-role"
+  for_each = var.services
+
+  name               = "${var.name}-${each.key}-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+}
+
+# Only services listed in task_policies get any permissions
+resource "aws_iam_role_policy" "task" {
+  for_each = var.task_policies
+
+  name   = "service-access"
+  role   = aws_iam_role.task[each.key].id
+  policy = each.value
 }

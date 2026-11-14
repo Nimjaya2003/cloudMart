@@ -38,12 +38,16 @@ output "db_address" {
   value = module.rds.db_address
 }
 
+output "cart_table_name" {
+  value = module.dynamodb.table_name
+}
+
 output "ecs_cluster_name" {
   value = module.ecs.cluster_name
 }
 
-output "backend_service_name" {
-  value = module.ecs.backend_service_name
+output "ecs_service_names" {
+  value = module.ecs.service_names
 }
 
 output "github_actions_role_arn" {

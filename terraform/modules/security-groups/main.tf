@@ -71,3 +71,13 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
   ip_protocol                  = "tcp"
 }
 # No egress rules on purpose: the DB never starts outbound connections.
+
+# Tasks in the app tier may call each other on the app port
+resource "aws_vpc_security_group_ingress_rule" "app_from_app" {
+  security_group_id            = aws_security_group.app.id
+  description                  = "Service-to-service calls between app tasks"
+  referenced_security_group_id = aws_security_group.app.id
+  from_port                    = var.app_port
+  to_port                      = var.app_port
+  ip_protocol                  = "tcp"
+}
