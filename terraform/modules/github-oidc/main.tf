@@ -63,6 +63,8 @@ data "aws_iam_policy_document" "deploy" {
     sid = "EcrPush"
     actions = [
       "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage", # lets Docker check whether a manifest exists (the HEAD request)
+      "ecr:GetDownloadUrlForLayer",
       "ecr:InitiateLayerUpload",
       "ecr:UploadLayerPart",
       "ecr:CompleteLayerUpload",
@@ -83,7 +85,13 @@ data "aws_iam_policy_document" "deploy" {
     resources = ["arn:aws:ecs:${local.region}:${local.account_id}:service/${var.name}-cluster/*"]
   }
 
-  # The new task definition references our two ECS roles, so the pipeline must be allowed to
+  statement {
+    sid       = "ReadLoadBalancerAddress"
+    actions   = ["elasticloadbalancing:DescribeLoadBalancers"]
+    resources = ["*"] # describe actions cannot be limited to one resource
+  }
+
+  # The new task definition references our ECS roles, so the pipeline must be allowed to
   # "pass" them, and only to the ECS tasks service
   statement {
     sid     = "PassEcsRoles"
@@ -97,11 +105,6 @@ data "aws_iam_policy_document" "deploy" {
       variable = "iam:PassedToService"
       values   = ["ecs-tasks.amazonaws.com"]
     }
-  }
-  statement {
-    sid       = "ReadLoadBalancerAddress"
-    actions   = ["elasticloadbalancing:DescribeLoadBalancers"]
-    resources = ["*"] # describe actions cannot be limited to one resource
   }
 }
 
