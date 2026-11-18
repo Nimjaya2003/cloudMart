@@ -1,0 +1,29 @@
+question,expected_source
+How many days do I have to return an unused item?,returns-and-refunds.md
+Can I send back boots that I wore on a muddy trail?,returns-and-refunds.md
+How many days does an express shipment take?,shipping-and-delivery.md
+What happens if my parcel never arrives?,shipping-and-delivery.md
+Can I pay using PayPal?,payment-and-pricing.md
+Can I get money back if the item price drops after purchase?,payment-and-pricing.md
+My jacket zipper broke after four months. Is it covered?,warranty-and-repairs.md
+How do I submit a manufacturing defect claim?,warranty-and-repairs.md
+Can I stop my order before it is shipped?,order-changes-and-cancellations.md
+Can I modify my delivery address after dispatch?,order-changes-and-cancellations.md
+What should I do if I forget my password?,faq-account-and-orders.md
+Is it possible to purchase without creating an account?,faq-account-and-orders.md
+How much space should there be in front of my toes?,guide-hiking-boots.md
+How do I maintain waterproof leather boots?,guide-hiking-boots.md
+Can I use fabric softener on my waterproof jacket?,guide-rain-jackets.md
+What does a 10000 mm waterproof rating mean?,guide-rain-jackets.md
+Why are wool socks better than cotton for hiking?,guide-socks-and-layering.md
+What are the three layers of hiking clothing?,guide-socks-and-layering.md
+How long does the headlamp last in red light mode?,guide-bottles-and-headlamps.md
+How many hours can the insulated bottle keep drinks hot?,guide-bottles-and-headlamps.md
+What equipment should I carry on my first rainy hike?,buying-guide-first-day-hike.md
+What should beginners prioritize when buying hiking equipment?,buying-guide-first-day-hike.md
+Is customer support available on Sundays?,store-info-and-contact.md
+How do I escalate a complaint to a senior team member?,store-info-and-contact.md
+What is the capital of France?,OUT_OF_SCOPE
+How do I install Kubernetes?,OUT_OF_SCOPE
+How many Trail Hiking Boots are currently in stock?,OUT_OF_SCOPE
+What is the current status of order 12345?,OUT_OF_SCOPE
