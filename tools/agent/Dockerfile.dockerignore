@@ -1,0 +1,15 @@
+**
+
+!tools/
+!tools/agent/
+
+!tools/agent/requirements.txt
+!tools/agent/llm_client.py
+!tools/agent/gateway_client.py
+!tools/agent/agent_tools.py
+!tools/agent/agent.py
+!tools/agent/server.py
+
+!tools/kb/
+!tools/kb/kb_common.py
+!tools/kb/ask.py

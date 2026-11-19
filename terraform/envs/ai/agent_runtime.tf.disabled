@@ -1,0 +1,308 @@
+
+# =============================================
+# 1. Input variables
+# =============================================
+
+variable "agent_image_uri" {
+
+  type        = string
+  description = "ARM64 agent image stored in ECR"
+}
+
+variable "agent_model_id" {
+
+  type        = string
+  description = "External Groq LLM model identifier"
+  default     = "openai/gpt-oss-20b"
+}
+
+
+# =============================================
+# 2. Account configuration
+# =============================================
+
+data "aws_caller_identity" "agent_account" {}
+
+locals {
+
+  runtime_name       = "cloudmart_dev_agent"
+  runtime_account_id = data.aws_caller_identity.agent_account.account_id
+
+  vector_index_arn = "arn:aws:s3vectors:ap-south-1:${local.runtime_account_id}:bucket/${module.knowledge_base.vector_bucket}/index/${module.knowledge_base.vector_index}"
+
+  runtime_logs_arn = "arn:aws:logs:ap-south-1:${local.runtime_account_id}:log-group:/aws/bedrock-agentcore/runtimes/${local.runtime_name}-*"
+}
+
+
+# =============================================
+# 3. Runtime execution role
+# =============================================
+
+resource "aws_iam_role" "agent_runtime" {
+
+  name = "cloudmart-dev-agent-runtime-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [{
+      Effect = "Allow"
+      Action = "sts:AssumeRole"
+
+      Principal = {
+        Service = "bedrock-agentcore.amazonaws.com"
+      }
+
+      Condition = {
+
+        StringEquals = {
+          "aws:SourceAccount" = local.runtime_account_id
+        }
+
+        ArnLike = {
+          "aws:SourceArn" = "arn:aws:bedrock-agentcore:ap-south-1:${local.runtime_account_id}:*"
+        }
+      }
+    }]
+  })
+}
+
+
+# =============================================
+# 4. Runtime IAM permissions
+# =============================================
+
+data "aws_iam_policy_document" "agent_runtime" {
+
+  # Read the Groq API key
+  statement {
+
+    sid = "ReadGroqSecret"
+
+    actions = [
+      "secretsmanager:GetSecretValue"
+    ]
+
+    resources = [
+      aws_secretsmanager_secret.groq.arn
+    ]
+  }
+
+  # Invoke the existing Gateway
+  statement {
+
+    sid = "InvokeCloudMartGateway"
+
+    actions = [
+      "bedrock-agentcore:InvokeGateway"
+    ]
+
+    resources = [
+      aws_bedrockagentcore_gateway.cloudmart.gateway_arn
+    ]
+  }
+
+  # Query our existing knowledge index
+  statement {
+
+    sid = "QueryKnowledgeVectors"
+
+    actions = [
+      "s3vectors:QueryVectors",
+      "s3vectors:GetVectors"
+    ]
+
+    resources = [
+      local.vector_index_arn
+    ]
+  }
+
+  # Pull the container image
+  statement {
+
+    sid = "PullAgentImage"
+
+    actions = [
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchCheckLayerAvailability"
+    ]
+
+    resources = [
+      aws_ecr_repository.agent.arn
+    ]
+  }
+
+  statement {
+
+    sid       = "ECRAuthentication"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  # Create and inspect Runtime log groups
+  statement {
+
+    sid = "RuntimeLogGroups"
+
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:DescribeLogStreams",
+      "logs:PutResourcePolicy"
+    ]
+
+    resources = [
+      local.runtime_logs_arn
+    ]
+  }
+
+  statement {
+
+    sid     = "DiscoverLogGroups"
+    actions = ["logs:DescribeLogGroups"]
+
+    resources = [
+      "arn:aws:logs:ap-south-1:${local.runtime_account_id}:log-group:*"
+    ]
+  }
+
+  # Write execution logs
+  statement {
+
+    sid = "RuntimeLogStreams"
+
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+
+    resources = [
+      "${local.runtime_logs_arn}:log-stream:*"
+    ]
+  }
+
+  # Telemetry
+  statement {
+
+    sid = "RuntimeTracing"
+
+    actions = [
+      "xray:PutTraceSegments",
+      "xray:PutTelemetryRecords",
+      "xray:GetSamplingRules",
+      "xray:GetSamplingTargets"
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+
+    sid       = "RuntimeMetrics"
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+
+    condition {
+
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = ["bedrock-agentcore"]
+    }
+  }
+
+  # Non-user workload identity access
+  statement {
+
+    sid = "RuntimeWorkloadIdentity"
+
+    actions = [
+      "bedrock-agentcore:GetWorkloadAccessToken"
+    ]
+
+    resources = [
+      "arn:aws:bedrock-agentcore:ap-south-1:${local.runtime_account_id}:workload-identity-directory/default",
+      "arn:aws:bedrock-agentcore:ap-south-1:${local.runtime_account_id}:workload-identity-directory/default/workload-identity/${local.runtime_name}-*"
+    ]
+  }
+}
+
+
+resource "aws_iam_role_policy" "agent_runtime" {
+
+  name   = "cloudmart-agent-runtime-access"
+  role   = aws_iam_role.agent_runtime.id
+  policy = data.aws_iam_policy_document.agent_runtime.json
+}
+
+
+# =============================================
+# 5. AgentCore Runtime
+# =============================================
+
+resource "aws_bedrockagentcore_agent_runtime" "cloudmart" {
+
+  agent_runtime_name = local.runtime_name
+
+  description = "CloudMart AI agent using Groq GPT-OSS and AWS retrieval and Gateway tools"
+
+  role_arn = aws_iam_role.agent_runtime.arn
+
+  agent_runtime_artifact {
+
+    container_configuration {
+
+      container_uri = var.agent_image_uri
+    }
+  }
+
+  network_configuration {
+
+    network_mode = "PUBLIC"
+  }
+
+  protocol_configuration {
+
+    server_protocol = "HTTP"
+  }
+
+  environment_variables = {
+
+    LLM_PROVIDER = "groq"
+
+    LLM_MODEL_ID = var.agent_model_id
+
+    GROQ_SECRET_ARN = aws_secretsmanager_secret.groq.arn
+
+    GATEWAY_URL = aws_bedrockagentcore_gateway.cloudmart.gateway_url
+
+    KB_VECTOR_BUCKET = module.knowledge_base.vector_bucket
+
+    KB_VECTOR_INDEX = module.knowledge_base.vector_index
+
+    KB_MODEL_PATH = "/opt/minilm"
+  }
+
+  depends_on = [
+    aws_iam_role_policy.agent_runtime
+  ]
+}
+
+
+# =============================================
+# 6. Outputs
+# =============================================
+
+output "agent_runtime_arn" {
+
+  value = aws_bedrockagentcore_agent_runtime.cloudmart.agent_runtime_arn
+}
+
+output "agent_runtime_id" {
+
+  value = aws_bedrockagentcore_agent_runtime.cloudmart.agent_runtime_id
+}
+
+output "agent_runtime_role_arn" {
+
+  value = aws_iam_role.agent_runtime.arn
+}
