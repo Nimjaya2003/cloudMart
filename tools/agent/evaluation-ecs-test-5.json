@@ -1,0 +1,51 @@
+{
+  "summary": {
+    "mode": "ecs",
+    "total_tests": 1,
+    "passed": 1,
+    "failed": 0,
+    "routing_pass_rate_percent": 100.0,
+    "average_latency_seconds": 2.188,
+    "total_input_tokens": 2350,
+    "total_output_tokens": 345,
+    "total_model_calls": 3
+  },
+  "tests": [
+    {
+      "test": "Combined tools",
+      "prompt": "Find hiking boots under 100 dollars and explain the footwear return policy.",
+      "status": "PASS",
+      "reason": "All routing checks passed",
+      "latency_seconds": 2.188,
+      "result": {
+        "answer": "**Hiking boots under $100**\n\n| Product ID | Name | Price | Stock |\n|------------|------|-------|-------|\n| 1 | Trail Hiking Boots | **$89.99** | 40 |\n\n*The Trail Hiking Boots are waterproof leather boots with ankle support and a grippy sole, currently in stock and priced below $100.*  \n(See product details from the live catalog search.)\n\n**Footwear return policy**\n\n- Footwear that has only been tried on indoors can be returned within **30 days** of purchase.  \n- If the footwear shows visible outdoor wear (e.g., mud, scuffing, or other damage), it **cannot** be returned unless it is defective.  \n- Defective items are handled under the 12‑month warranty policy.  \n- For non‑defective returns, CloudMart charges a flat $5.00 return‑label fee (unless the item is defective or we sent the wrong item, in which case CloudMart covers return shipping).  \n\nThese details are taken from CloudMart’s “Returns and Refunds” policy documents.",
+        "latency_ms": 2060.3,
+        "model": "openai/gpt-oss-20b",
+        "retrieved_sources": [
+          "returns-and-refunds.md",
+          "warranty-and-repairs.md"
+        ],
+        "success": true,
+        "tool_calls": [
+          {
+            "count": 1,
+            "latency_ms": 693.91,
+            "name": "search_products",
+            "success": true
+          },
+          {
+            "count": 3,
+            "latency_ms": 92.41,
+            "name": "search_knowledge_base",
+            "success": true
+          }
+        ],
+        "usage": {
+          "input_tokens": 2350,
+          "model_calls": 3,
+          "output_tokens": 345
+        }
+      }
+    }
+  ]
+}

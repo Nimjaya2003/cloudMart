@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "mode": "ecs",
+    "total_tests": 1,
+    "passed": 1,
+    "failed": 0,
+    "routing_pass_rate_percent": 100.0,
+    "average_latency_seconds": 1.01,
+    "total_input_tokens": 1507,
+    "total_output_tokens": 88,
+    "total_model_calls": 2
+  },
+  "tests": [
+    {
+      "test": "Return policy",
+      "prompt": "How many days can I return an unused item?",
+      "status": "PASS",
+      "reason": "All routing checks passed",
+      "latency_seconds": 1.01,
+      "result": {
+        "answer": "You can return an unused item within **30 days** of the delivery date for a full refund.  \n\n*Source: `returns-and-refunds.md`*",
+        "latency_ms": 907.84,
+        "model": "openai/gpt-oss-20b",
+        "retrieved_sources": [
+          "returns-and-refunds.md"
+        ],
+        "success": true,
+        "tool_calls": [
+          {
+            "count": 3,
+            "latency_ms": 88.12,
+            "name": "search_knowledge_base",
+            "success": true
+          }
+        ],
+        "usage": {
+          "input_tokens": 1507,
+          "model_calls": 2,
+          "output_tokens": 88
+        }
+      }
+    }
+  ]
+}
