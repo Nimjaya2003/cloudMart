@@ -4,6 +4,7 @@ resource "aws_lb" "this" {
   internal                   = false
   security_groups            = [var.alb_sg_id]
   subnets                    = var.public_subnet_ids
+  idle_timeout = 240
   drop_invalid_header_fields = true
   tags                       = { Name = "${var.name}-alb" }
 }
